@@ -1,150 +1,168 @@
 import { useState } from "react";
 import { FcGoogle } from "react-icons/fc";
+import { GoogleLogin } from "@react-oauth/google";
 
 export default function Login() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [mobile, setMobile] = useState("");
+  const [showOtp, setShowOtp] = useState(false);
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
 
-  const [mobile,setMobile] = useState("");
-  const [showOtp,setShowOtp] = useState(false);
-  const [otp,setOtp] = useState(["","","","","",""]);
+  // ✅ NEW: password toggle
+  const [showPassword, setShowPassword] = useState(false);
 
-  const handleOtpChange = (value,index)=>{
-    const newOtp=[...otp];
-    newOtp[index]=value;
+  // OTP INPUT
+  const handleOtpChange = (value, index) => {
+    if (value.length > 1) return;
+
+    const newOtp = [...otp];
+    newOtp[index] = value;
     setOtp(newOtp);
-  }
+
+    if (value && index < 5) {
+      const next = document.getElementById(`otp-${index + 1}`);
+      next?.focus();
+    }
+  };
+
+  const handleLogin = () => {
+    console.log("Email:", email);
+    console.log("Password:", password);
+    alert("Login Working");
+  };
+
+  const verifyOtp = () => {
+    const finalOtp = otp.join("");
+    alert(`OTP Entered: ${finalOtp}`);
+  };
 
   return (
+    <div className="container">
 
-<div className="min-h-screen flex items-center justify-center bg-gray-50">
+      {/* LEFT SIDE */}
+      <div className="left">
+        <h1>
+          The best offer <br />
+          <span>for your business</span>
+        </h1>
 
-<div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-lg">
+        <p>
+          Manage temple operations with secure login, modern UI and powerful system.
+        </p>
+      </div>
 
-{/* HEADER */}
+      {/* RIGHT SIDE */}
+      <div className="right">
+        <div className="card">
 
-<h1 className="text-3xl font-semibold text-center mb-2">
-Temple Management
-</h1>
+          <h1 className="title">Temple Management</h1>
+          <p className="subtitle">Sign in to your account</p>
 
-<p className="text-center text-gray-500 mb-6">
-Sign in to your account
-</p>
+          {/* GOOGLE LOGIN */}
+          <div className="google-wrapper">
+            <GoogleLogin
+              onSuccess={(credentialResponse) => {
+                console.log("Google Login:", credentialResponse);
+              }}
+            />
+          </div>
 
+          {/* DIVIDER */}
+          <div className="divider">
+            <span>OR</span>
+          </div>
 
-{/* GOOGLE LOGIN */}
+          {/* EMAIL */}
+          <input
+            type="email"
+            placeholder="Email address"
+            className="input"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
 
-<button className="w-full flex items-center justify-center gap-3 border border-gray-300 rounded-lg p-3 hover:bg-gray-50 transition">
+          {/* PASSWORD WITH 👁 */}
+          <div style={{ position: "relative" }}>
+            <input
+              type={showPassword ? "text" : "password"}
+              placeholder="Password"
+              className="input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
 
-<FcGoogle size={22}/>
+            <span
+              onClick={() => setShowPassword(!showPassword)}
+              style={{
+                position: "absolute",
+                right: "10px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                cursor: "pointer",
+                fontSize: "14px"
+              }}
+            >
+              {showPassword ? "🙈" : "👁"}
+            </span>
+          </div>
 
-Continue with Google
+          <button type="button" className="primary-btn" onClick={handleLogin}>
+            Sign In
+          </button>
 
-</button>
+          {/* MOBILE OTP */}
+          <p className="otp-text">Login with Mobile OTP</p>
 
+          <input
+            type="tel"
+            placeholder="Mobile number"
+            value={mobile}
+            onChange={(e) => setMobile(e.target.value)}
+            className="input"
+          />
 
-{/* DIVIDER */}
+          {!showOtp && (
+            <button
+              type="button"
+              onClick={() => setShowOtp(true)}
+              className="otp-btn"
+            >
+              Send OTP
+            </button>
+          )}
 
-<div className="flex items-center my-6">
+          {showOtp && (
+            <div>
+              <div className="otp-box">
+                {otp.map((digit, index) => (
+                  <input
+                    key={index}
+                    id={`otp-${index}`}
+                    maxLength="1"
+                    value={digit}
+                    onChange={(e) =>
+                      handleOtpChange(e.target.value, index)
+                    }
+                    className="otp-input"
+                  />
+                ))}
+              </div>
 
-<div className="flex-grow border-t"></div>
+              <button type="button" className="verify-btn" onClick={verifyOtp}>
+                Verify OTP
+              </button>
+            </div>
+          )}
 
-<span className="mx-3 text-gray-400 text-sm">OR</span>
+          {/* FOOTER */}
+          <p className="footer">
+            Don't have an account?
+            <span> Register</span>
+          </p>
 
-<div className="flex-grow border-t"></div>
-
-</div>
-
-
-{/* EMAIL LOGIN */}
-
-<div className="space-y-4">
-
-<input
-type="email"
-placeholder="Email address"
-className="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-orange-400 outline-none"
-/>
-
-<input
-type="password"
-placeholder="Password"
-className="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-orange-400 outline-none"
-/>
-
-<button className="w-full bg-orange-500 text-white p-3 rounded-lg hover:bg-orange-600 transition font-medium">
-Sign In
-</button>
-
-</div>
-
-
-{/* MOBILE LOGIN */}
-
-<div className="mt-6">
-
-<p className="text-sm text-gray-500 mb-2">
-Login with Mobile OTP
-</p>
-
-<input
-type="tel"
-placeholder="Mobile number"
-value={mobile}
-onChange={(e)=>setMobile(e.target.value)}
-className="w-full border border-gray-300 p-3 rounded-lg mb-3"
-/>
-
-{!showOtp && (
-
-<button
-onClick={()=>setShowOtp(true)}
-className="w-full bg-green-500 text-white p-3 rounded-lg hover:bg-green-600 transition"
->
-Send OTP
-</button>
-
-)}
-
-{showOtp && (
-
-<div>
-
-<div className="flex justify-between gap-2 mb-3">
-
-{otp.map((digit,index)=>(
-<input
-key={index}
-maxLength="1"
-value={digit}
-onChange={(e)=>handleOtpChange(e.target.value,index)}
-className="w-10 h-10 border rounded-md text-center text-lg"
-/>
-))}
-
-</div>
-
-<button className="w-full bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600">
-Verify OTP
-</button>
-
-</div>
-
-)}
-
-</div>
-
-
-{/* FOOTER */}
-
-<p className="text-center text-sm text-gray-500 mt-6">
-Don't have an account? 
-<span className="text-orange-500 ml-1 cursor-pointer">
-Register
-</span>
-</p>
-
-</div>
-
-</div>
-
+        </div>
+      </div>
+    </div>
   );
 }
