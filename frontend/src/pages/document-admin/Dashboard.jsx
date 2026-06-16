@@ -1,0 +1,510 @@
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { FiSearch, FiPlus, FiLogOut, FiFileText, FiEye, FiEdit2, FiTrash2, FiDownload, FiX, FiUploadCloud } from "react-icons/fi";
+import axios from "axios";
+import { useNavigate } from "react-router-dom";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const ASSETS_URL = import.meta.env.VITE_ASSETS_URL || "http://localhost:5000";
+
+const DocumentAdminDashboard = () => {
+  const [documents, setDocuments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [branches, setBranches] = useState([]);
+  const [selectedBranch, setSelectedBranch] = useState("All");
+  
+  // Modal states
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  
+  // Selected document state
+  const [currentDocument, setCurrentDocument] = useState(null);
+  const [deletionReason, setDeletionReason] = useState("");
+  
+  // Form states
+  const [formData, setFormData] = useState({ title: "", description: "", category: "Reports", branchId: "" });
+  const [file, setFile] = useState(null);
+  const [formLoading, setFormLoading] = useState(false);
+
+  const navigate = useNavigate();
+  const token = sessionStorage.getItem("documentAdminToken");
+  const adminBranchName = sessionStorage.getItem("documentAdminBranch") || "Unknown Branch";
+
+  const categories = ["All", "Reports", "Policies", "Financial", "Meeting Minutes", "Other"];
+
+  useEffect(() => {
+    if (!token) {
+      navigate("/login");
+      return;
+    }
+    fetchBranches();
+  }, []);
+
+  useEffect(() => {
+    if (token) fetchDocuments();
+  }, [searchTerm, selectedCategory, selectedBranch]);
+
+  const fetchBranches = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/branches`);
+      if (res.data.success) setBranches(res.data.branches);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchDocuments = async () => {
+    try {
+      setLoading(true);
+      const res = await axios.get(`${API_URL}/documents`, {
+        params: { search: searchTerm, category: selectedCategory, branchId: selectedBranch },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setDocuments(res.data.documents);
+    } catch (err) {
+      console.error("Error fetching documents:", err);
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        handleLogout();
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem("documentAdminToken");
+    sessionStorage.removeItem("documentAdminBranch");
+    sessionStorage.clear();
+    localStorage.removeItem("documentAdminToken");
+    localStorage.removeItem("documentAdminBranch");
+    navigate("/login");
+  };
+
+  const handleFileChange = (e) => {
+    if (e.target.files[0]) {
+      if (e.target.files[0].type !== "application/pdf") {
+        alert("Please upload a PDF file only.");
+        return;
+      }
+      if (e.target.files[0].size > 10 * 1024 * 1024) {
+        alert("File size must be less than 10MB.");
+        return;
+      }
+      setFile(e.target.files[0]);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!currentDocument && !file) {
+      alert("Please select a PDF file to upload");
+      return;
+    }
+
+    const data = new FormData();
+    data.append("title", formData.title);
+    data.append("description", formData.description);
+    data.append("category", formData.category);
+    if (formData.branchId) {
+      data.append("branchId", formData.branchId);
+    }
+    if (file) {
+      data.append("pdf", file);
+    }
+
+    try {
+      setFormLoading(true);
+      if (currentDocument) {
+        await axios.put(`${API_URL}/documents/${currentDocument._id}`, data, {
+          headers: { 
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data" 
+          }
+        });
+      } else {
+        await axios.post(`${API_URL}/documents`, data, {
+          headers: { 
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data" 
+          }
+        });
+      }
+      setIsUploadModalOpen(false);
+      resetForm();
+      fetchDocuments();
+    } catch (err) {
+      alert(err.response?.data?.message || "An error occurred");
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!currentDocument) return;
+    try {
+      await axios.delete(`${API_URL}/documents/${currentDocument._id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { reason: deletionReason }
+      });
+      setIsDeleteModalOpen(false);
+      fetchDocuments();
+    } catch (err) {
+      alert("Error deleting document");
+    }
+  };
+
+  const handleApproveDeletion = async (doc) => {
+    try {
+      const res = await axios.put(`${API_URL}/documents/${doc._id}/approve-deletion`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      alert(res.data.message);
+      fetchDocuments();
+    } catch (err) {
+      alert(err.response?.data?.message || "Error approving deletion");
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({ title: "", description: "", category: "Reports" });
+    setFile(null);
+    setCurrentDocument(null);
+  };
+
+  const openEditModal = (doc) => {
+    setCurrentDocument(doc);
+    setFormData({ 
+      title: doc.title, 
+      description: doc.description, 
+      category: doc.category,
+      branchId: doc.branch?._id || ""
+    });
+    setFile(null);
+    setIsUploadModalOpen(true);
+  };
+
+  const openDeleteModal = (doc) => {
+    setCurrentDocument(doc);
+    setDeletionReason("");
+    setIsDeleteModalOpen(true);
+  };
+
+  const openViewModal = (doc) => {
+    setCurrentDocument(doc);
+    setIsViewModalOpen(true);
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
+      {/* Top Navbar */}
+      <nav className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-20">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
+            <FiFileText className="text-white text-xl" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-slate-800 leading-tight">Document Hub</h1>
+            <p className="text-xs text-indigo-200 mt-1">{adminBranchName}</p>
+          </div>
+        </div>
+        <button 
+          onClick={handleLogout}
+          className="flex items-center gap-2 text-slate-500 hover:text-red-600 transition-colors bg-slate-100 hover:bg-red-50 px-4 py-2 rounded-lg text-sm font-medium"
+        >
+          <FiLogOut /> Logout
+        </button>
+      </nav>
+
+      <main className="w-full px-6 py-8">
+        {/* Stats Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between group hover:shadow-md transition-shadow">
+            <div>
+              <p className="text-sm text-slate-500 mb-1">Total Documents</p>
+              <h3 className="text-3xl font-bold text-slate-800">{documents.length}</h3>
+            </div>
+            <div className="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
+              <FiFileText className="text-xl" />
+            </div>
+          </div>
+          {/* We can add more stats cards here if needed */}
+        </div>
+
+        {/* Action Bar */}
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-6 flex flex-col md:flex-row gap-4 justify-between items-center">
+          <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+            <div className="relative">
+              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Search documents..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white w-full md:w-64 transition-all"
+              />
+            </div>
+            <select 
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition-all text-slate-700"
+            >
+              {categories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+            <select 
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+              className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white transition-all text-slate-700"
+            >
+              <option value="All">All Branches</option>
+              {branches.map(b => (
+                <option key={b._id} value={b._id}>{b.name}</option>
+              ))}
+            </select>
+          </div>
+          <button 
+            onClick={() => { resetForm(); setIsUploadModalOpen(true); }}
+            className="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 transition-all active:scale-95"
+          >
+            <FiPlus /> Upload Document
+          </button>
+        </div>
+
+        {/* Documents Table */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 text-sm">
+                  <th className="px-6 py-4 font-medium">Document Info</th>
+                  <th className="px-6 py-4 font-medium">Category</th>
+                  <th className="px-6 py-4 font-medium">Branch</th>
+                  <th className="px-6 py-4 font-medium">Size</th>
+                  <th className="px-6 py-4 font-medium">Uploaded</th>
+                  <th className="px-6 py-4 font-medium text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan="6" className="px-6 py-12 text-center text-slate-500">
+                      <div className="flex flex-col items-center justify-center">
+                        <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
+                        Loading documents...
+                      </div>
+                    </td>
+                  </tr>
+                ) : documents.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="px-6 py-12 text-center text-slate-500">
+                      <div className="flex flex-col items-center justify-center">
+                        <FiFileText className="text-4xl text-slate-300 mb-3" />
+                        <p>No documents found matching your criteria.</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  documents.map((doc, idx) => (
+                    <tr 
+                      key={doc._id} 
+                      className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group"
+                    >
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-red-50 text-red-500 flex items-center justify-center shrink-0">
+                            <span className="text-xs font-bold">PDF</span>
+                          </div>
+                          <div>
+                            <p className="font-semibold text-slate-800 line-clamp-1">{doc.title}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs text-slate-500 line-clamp-1">{doc.pdfName}</p>
+                              {doc.deleteStatus === "Pending" && (
+                                <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-md uppercase">Deletion Pending</span>
+                              )}
+                              {doc.deleteStatus === "Rejected" && (
+                                <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-md uppercase" title="Deletion Rejected">Rejected</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-medium">
+                          {doc.category}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-slate-600">
+                        {doc.branch ? (
+                           <span className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded text-xs font-semibold flex items-center w-max gap-1">
+                             {doc.branch.name}
+                           </span>
+                        ) : (
+                           <span className="px-2 py-1 bg-gray-100 text-gray-500 rounded text-xs font-semibold w-max">
+                             Global
+                           </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-slate-600">
+                        {formatFileSize(doc.fileSize)}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-slate-600">
+                        {new Date(doc.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => openViewModal(doc)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg tooltip" title="View">
+                            <FiEye />
+                          </button>
+                          <a href={`${ASSETS_URL}${doc.pdfUrl}`} target="_blank" rel="noopener noreferrer" className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg tooltip" title="Download">
+                            <FiDownload />
+                          </a>
+                          <button onClick={() => openEditModal(doc)} className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg tooltip" title="Edit">
+                            <FiEdit2 />
+                          </button>
+                          {doc.deleteStatus !== "Pending" ? (
+                            <button onClick={() => openDeleteModal(doc)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg tooltip" title="Request Deletion">
+                              <FiTrash2 />
+                            </button>
+                          ) : (
+                            <button onClick={() => handleApproveDeletion(doc)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg tooltip" title="Approve Deletion Request">
+                              <span className="font-bold text-xs uppercase tracking-wider">Approve</span>
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </main>
+
+      {/* Modals */}
+      <AnimatePresence>
+        {isUploadModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <h3 className="font-bold text-lg text-slate-800">{currentDocument ? "Edit Document" : "Upload Document"}</h3>
+                <button onClick={() => setIsUploadModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                  <FiX className="text-xl" />
+                </button>
+              </div>
+              <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Title</label>
+                  <input type="text" required value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/50 focus:outline-none" placeholder="Enter document title" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
+                  <select value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/50 focus:outline-none">
+                    {categories.filter(c => c !== "All").map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Branch</label>
+                  <select value={formData.branchId} onChange={(e) => setFormData({...formData, branchId: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/50 focus:outline-none">
+                    <option value="">Global (All Branches)</option>
+                    {branches.map(b => (
+                      <option key={b._id} value={b._id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                  <textarea required value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} rows="3" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/50 focus:outline-none resize-none" placeholder="Brief description..." />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">PDF File {currentDocument && "(Leave empty to keep existing)"}</label>
+                  <div className="relative border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => document.getElementById('file-upload').click()}>
+                    <input id="file-upload" type="file" accept=".pdf" onChange={handleFileChange} className="hidden" />
+                    <FiUploadCloud className="mx-auto text-3xl text-indigo-400 mb-2" />
+                    <p className="text-sm text-slate-600 font-medium">
+                      {file ? file.name : "Click to select or drag and drop PDF"}
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1">PDF up to 10MB</p>
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-4 border-t border-slate-100">
+                  <button type="button" onClick={() => setIsUploadModalOpen(false)} className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-600 rounded-xl font-medium hover:bg-slate-50">Cancel</button>
+                  <button type="submit" disabled={formLoading} className="flex-1 px-4 py-2.5 bg-blue-900 hover:bg-blue-800 text-white rounded-xl font-medium disabled:opacity-70 flex items-center justify-center gap-2">
+                    {formLoading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                    {currentDocument ? "Update Document" : "Upload Document"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
+        {isDeleteModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden p-6 text-center">
+              <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <FiTrash2 className="text-2xl" />
+              </div>
+              <h3 className="font-bold text-lg text-slate-800 mb-2">Request Deletion?</h3>
+              <p className="text-slate-500 text-sm mb-4">Are you sure you want to delete "{currentDocument?.title}"? You must provide a reason for the Trustee to review.</p>
+              <textarea 
+                placeholder="Reason for deletion..." 
+                value={deletionReason} 
+                onChange={(e) => setDeletionReason(e.target.value)} 
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/50 outline-none resize-none h-24 mb-6 text-sm"
+              />
+              <div className="flex gap-3">
+                <button onClick={() => setIsDeleteModalOpen(false)} className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200">Cancel</button>
+                <button onClick={handleDelete} disabled={!deletionReason.trim()} className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 disabled:opacity-50">Submit Request</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {isViewModalOpen && currentDocument && (
+          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex flex-col p-4 md:p-10">
+            <div className="flex justify-between items-center mb-4 text-white">
+              <h3 className="font-bold text-xl">{currentDocument.title}</h3>
+              <div className="flex gap-4">
+                <a href={`${ASSETS_URL}${currentDocument.pdfUrl}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition-colors">
+                  <FiDownload /> Download
+                </a>
+                <button onClick={() => setIsViewModalOpen(false)} className="text-white hover:text-slate-300 bg-white/10 p-2 rounded-lg">
+                  <FiX className="text-2xl" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 bg-white rounded-2xl overflow-hidden">
+              <iframe 
+                src={`${ASSETS_URL}${currentDocument.pdfUrl}`} 
+                className="w-full h-full border-0"
+                title={currentDocument.title}
+              />
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export default DocumentAdminDashboard;

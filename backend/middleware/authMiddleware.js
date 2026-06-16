@@ -1,21 +1,56 @@
-const admin = require("../config/firebaseAdmin");
+const jwt = require("jsonwebtoken");
+const Admin = require("../models/Admin");
+const Trustee = require("../models/Trustee");
+const Devotee = require("../models/Devotee");
+const BranchManager = require("../models/BranchManager");
+const Accountant = require("../models/Accountant");
 
-module.exports = async(req,res,next)=>{
+module.exports = async (req, res, next) => {
+  let token;
 
-try{
+  if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
+    token = req.headers.authorization.split(" ")[1];
+  }
 
-const token = req.headers.authorization;
+  if (!token) {
+    return res.status(401).json({ success: false, message: "Not authorized to access this route" });
+  }
 
-const decoded = await admin.auth().verifyIdToken(token);
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "default_secret_key");
 
-req.user = decoded;
+    let user = null;
+    switch (decoded.role) {
+      case "Admin":
+        user = await Admin.findById(decoded.id);
+        break;
+      case "Trustee":
+        user = await Trustee.findById(decoded.id);
+        break;
+      case "Devotee":
+        user = await Devotee.findById(decoded.id);
+        break;
+      case "DocumentHandler":
+        user = await DocumentHandler.findById(decoded.id);
+        break;
+      case "BranchManager":
+        user = await BranchManager.findById(decoded.id);
+        break;
+      case "Accountant":
+        user = await Accountant.findById(decoded.id);
+        break;
+      default:
+        return res.status(401).json({ success: false, message: "Invalid role in token" });
+    }
 
-next();
+    if (!user) {
+      return res.status(401).json({ success: false, message: "User not found" });
+    }
 
-}catch(err){
-
-res.status(401).json("Unauthorized");
-
-}
-
-}
+    req.user = user;
+    req.user.role = decoded.role; // Ensure role is available
+    next();
+  } catch (error) {
+    return res.status(401).json({ success: false, message: "Not authorized to access this route" });
+  }
+};

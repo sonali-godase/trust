@@ -1,0 +1,18 @@
+const express = require("express");
+const router = express.Router();
+const { login, setup, getAdmins, createAdmin, deleteAdmin } = require("../controllers/documentAuthController");
+const authMiddleware = require("../middleware/authMiddleware");
+
+router.post("/login", login);
+
+router.post("/setup", setup); // Hidden route to create first admin
+
+// Super Admin routes for managing Document Admins
+router.get("/", authMiddleware, getAdmins);
+router.post("/send-otp", authMiddleware, require("../controllers/documentAuthController").sendAdminOtp);
+router.post("/verify-otp", authMiddleware, require("../controllers/documentAuthController").verifyAdminOtp);
+router.post("/", authMiddleware, createAdmin);
+router.put("/:id", authMiddleware, require("../controllers/documentAuthController").updateAdmin);
+router.delete("/:id", authMiddleware, deleteAdmin);
+
+module.exports = router;

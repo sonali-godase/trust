@@ -1,0 +1,576 @@
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { FaPlus, FaEdit, FaTrash, FaSpinner, FaCalendarAlt, FaSearch, FaMapMarkerAlt, FaClock, FaBullhorn } from "react-icons/fa";
+import { io } from "socket.io-client";
+import api from "../../utils/api";
+import { usePermissions } from '../../hooks/usePermissions';
+
+const ASSETS_URL = import.meta.env.VITE_ASSETS_URL || "http://localhost:5000";
+
+const getImageUrl = (url) => {
+  if (!url) return "https://images.unsplash.com/photo-1514222709107-a180c68d72b4?q=80&w=2000";
+  if (url.startsWith('http')) return url;
+  if (url.startsWith('/')) return `${ASSETS_URL}${url}`;
+  return `${ASSETS_URL}/${url}`;
+};
+
+const AdminEvents = () => {
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [branches, setBranches] = useState([]);
+  const { hasManage } = usePermissions('Events');
+
+  const [showModal, setShowModal] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [formLoading, setFormLoading] = useState(false);
+  
+  const [activeTab, setActiveTab] = useState('upcoming'); // upcoming, live, past
+  const [liveStream, setLiveStream] = useState(null);
+  const [pastVideos, setPastVideos] = useState([]);
+  
+  const [liveFormData, setLiveFormData] = useState({ title: '', description: '', streamUrl: '', scheduledAt: '' });
+  const [liveVideoFile, setLiveVideoFile] = useState(null);
+  const [liveThumbnailFile, setLiveThumbnailFile] = useState(null);
+
+  const [formData, setFormData] = useState({
+    title: "",
+    category: "Spiritual",
+    description: "",
+    location: "",
+    eventDate: "",
+    eventTime: "",
+    status: "upcoming",
+    branch: "",
+    isPublished: true
+  });
+  const [imageFile, setImageFile] = useState(null);
+  const [videoFile, setVideoFile] = useState(null);
+
+  const categories = ["Spiritual", "Festival", "Community", "Social", "Donation", "Trust", "Education", "Medical"];
+
+  useEffect(() => {
+    fetchBranches();
+    fetchEvents();
+
+    const socket = io("http://localhost:5000");
+
+    socket.on("event_created", (newEvent) => setEvents((prev) => [newEvent, ...prev]));
+    socket.on("event_updated", (updatedEvent) => setEvents((prev) => prev.map((e) => (e._id === updatedEvent._id ? updatedEvent : e))));
+    socket.on("event_deleted", (deletedId) => setEvents((prev) => prev.filter((e) => e._id !== deletedId)));
+
+    return () => socket.disconnect();
+  }, []);
+
+  const fetchBranches = async () => {
+    try {
+      const res = await api.get('/branches');
+      setBranches(res.data.branches || []);
+    } catch (err) {
+      console.error("Failed to fetch branches", err);
+    }
+  };
+
+  const fetchEvents = async () => {
+    try {
+      setLoading(true);
+      const res = await api.get("/events/admin");
+      setEvents(res.data.data || []);
+      setError("");
+    } catch (err) {
+      console.error(err);
+      setError("Failed to fetch events.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchLiveStreams = async () => {
+    try {
+      const [currentRes, historyRes] = await Promise.all([
+        api.get('/live/current'),
+        api.get('/live/history')
+      ]);
+      setLiveStream(currentRes.data.data);
+      setPastVideos(historyRes.data.history || []);
+    } catch (err) {
+      console.error("Failed to fetch live streams", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchLiveStreams();
+  }, [activeTab]);
+
+  const handleLiveSubmit = async (e, isLive) => {
+    e.preventDefault();
+    try {
+      if (isLive) {
+        if (liveStream) {
+          await api.put(`/live/${liveStream._id}`, { ...liveFormData, isLive });
+        } else {
+          await api.post('/live', { ...liveFormData, isLive });
+        }
+      } else {
+        const formDataPayload = new FormData();
+        Object.keys(liveFormData).forEach(key => {
+          if (liveFormData[key] !== undefined && liveFormData[key] !== null) {
+            formDataPayload.append(key, liveFormData[key]);
+          }
+        });
+        formDataPayload.append('isLive', 'false');
+        if (liveVideoFile) formDataPayload.append('videoFile', liveVideoFile);
+        if (liveThumbnailFile) formDataPayload.append('thumbnail', liveThumbnailFile);
+        
+        await api.post('/live', formDataPayload, { headers: { 'Content-Type': 'multipart/form-data' } });
+      }
+      
+      fetchLiveStreams();
+      if (!isLive) {
+        setLiveFormData({ title: '', description: '', streamUrl: '', scheduledAt: '' });
+        setLiveVideoFile(null);
+        setLiveThumbnailFile(null);
+      }
+      alert(isLive ? "Live Aarati Started!" : "Past Video Added!");
+    } catch (err) {
+      console.error(err);
+      alert("Error saving live stream.");
+    }
+  };
+  
+  const handleStopLive = async () => {
+    if (!liveStream) return;
+    try {
+      await api.put(`/live/${liveStream._id}`, { isLive: false, title: liveStream.title, streamUrl: liveStream.streamUrl });
+      fetchLiveStreams();
+      alert("Live Aarati Stopped.");
+    } catch (err) {
+      alert("Error stopping live stream.");
+    }
+  };
+  
+  const handleDeleteLive = async (id) => {
+    if(!window.confirm("Delete this video?")) return;
+    try {
+      await api.delete(`/live/${id}`);
+      fetchLiveStreams();
+    } catch(err) {
+      alert("Error deleting");
+    }
+  };
+
+  const handleInputChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+  const handleFileChange = (e) => setImageFile(e.target.files[0]);
+  const handleVideoChange = (e) => setVideoFile(e.target.files[0]);
+
+  const openModal = (event = null) => {
+    if (event) {
+      setEditingEvent(event);
+      setFormData({
+        title: event.title || "",
+        category: event.category ? event.category.charAt(0).toUpperCase() + event.category.slice(1) : "Spiritual",
+        description: event.fullDescription || event.description || "",
+        location: event.location || "",
+        eventDate: event.eventDate ? new Date(event.eventDate).toISOString().split('T')[0] : "",
+        eventTime: event.eventTime || "",
+        status: event.status || "upcoming",
+        branch: event.branch ? (event.branch._id || event.branch) : "",
+        isPublished: event.isPublished !== undefined ? event.isPublished : true
+      });
+    } else {
+      setEditingEvent(null);
+      setFormData({
+        title: "", category: "Spiritual", description: "", location: "", eventDate: "", eventTime: "", status: "upcoming", branch: "", isPublished: true
+      });
+    }
+    setImageFile(null);
+    setVideoFile(null);
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setEditingEvent(null);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!editingEvent && !imageFile) {
+      alert("Featured Image is required for new events.");
+      return;
+    }
+    setFormLoading(true);
+    try {
+      const data = new FormData();
+      Object.keys(formData).forEach(key => {
+        if (key === 'description') {
+          data.append('shortDescription', formData[key].substring(0, 195));
+          data.append('fullDescription', formData[key]);
+        } else if (key === 'category') {
+          data.append('category', formData[key].toLowerCase());
+        } else if (key === 'isPublished') {
+          data.append('isPublished', formData.isPublished);
+        } else {
+          data.append(key, formData[key]);
+        }
+      });
+      if (imageFile) data.append("featuredImage", imageFile);
+      if (videoFile) data.append("videoFile", videoFile);
+
+      if (editingEvent) {
+        await api.put(`/events/admin/${editingEvent._id}`, data);
+      } else {
+        await api.post("/events/admin", data);
+      }
+      
+      closeModal();
+      fetchEvents();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to save event. Check console.");
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const togglePublish = async (id) => {
+    try {
+      await api.patch(`/events/admin/${id}/publish`);
+      fetchEvents();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to toggle publish status");
+    }
+  };
+
+  const deleteEvent = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this event?")) return;
+    try {
+      await api.delete(`/events/admin/${id}`);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const filteredEvents = events.filter((e) => e.title.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div className="min-h-screen bg-transparent text-gray-900 pb-12 font-sans">
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
+            <FaCalendarAlt className="text-gray-700" /> Event Management
+            {!hasManage && <span className="bg-yellow-100 text-yellow-800 text-xs font-bold px-3 py-1 rounded-full shadow-sm">View Only Access</span>}
+          </h1>
+          <p className="text-sm text-gray-500 mt-2">Manage all temple spiritual events, live aarati, and past videos.</p>
+        </div>
+        {activeTab === 'upcoming' && hasManage && (
+        <button onClick={() => openModal()} className="bg-[#FF7A2F] hover:bg-[#e66a22] transition-colors px-6 py-3 rounded-xl text-white font-bold flex items-center gap-2 shadow-[0_4px_14px_0_rgba(255,122,47,0.39)]">
+            <FaPlus /> Add Event
+          </button>
+        )}
+      </div>
+
+      {/* TABS */}
+      <div className="flex gap-4 mb-8 bg-white border border-gray-100 p-1.5 rounded-2xl w-fit shadow-sm">
+        <button onClick={() => setActiveTab('upcoming')} className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${activeTab === 'upcoming' ? 'bg-[#05051F] text-white shadow-md' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`}>Upcoming Events</button>
+        <button onClick={() => setActiveTab('live')} className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 ${activeTab === 'live' ? 'bg-[#05051F] text-white shadow-md' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`}>
+          {liveStream?.isLive && <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>}
+          Live Aarati
+        </button>
+        <button onClick={() => setActiveTab('past')} className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${activeTab === 'past' ? 'bg-[#05051F] text-white shadow-md' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`}>Past Videos</button>
+      </div>
+
+      {activeTab === 'upcoming' && (
+        <>
+          {/* SEARCH */}
+          <div className="relative mb-10">
+            <FaSearch className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400 text-lg" />
+            <input type="text" placeholder="Search events..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full max-w-2xl bg-white border border-gray-100 rounded-3xl pl-14 pr-6 py-4 outline-none focus:border-gray-300 shadow-sm transition-all text-gray-900 font-medium" />
+          </div>
+
+          {/* EVENTS GRID */}
+          {loading ? (
+            <div className="flex justify-center py-20"><FaSpinner className="animate-spin text-5xl text-gray-400" /></div>
+          ) : filteredEvents.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+              {filteredEvents.map((event, index) => (
+                <motion.div key={event._id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: index * 0.05 }} className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-lg transition-all group flex flex-col">
+                  
+                  <div className="relative h-56 overflow-hidden shrink-0 bg-gray-50 flex items-center justify-center">
+                    <img src={getImageUrl(event.featuredImage)} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 via-gray-900/20 to-transparent pointer-events-none"></div>
+                    
+                    <div className="absolute top-4 left-4">
+                      <span className={`px-4 py-1.5 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-widest text-gray-900 shadow-sm bg-white/90`}>
+                        {event.status}
+                      </span>
+                    </div>
+                    
+                    <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm rounded-2xl text-center overflow-hidden shadow-sm min-w-[4rem] border border-gray-100">
+                      <div className="bg-gray-100 text-gray-500 text-[10px] font-bold uppercase tracking-widest py-2 border-b border-gray-200">{new Date(event.eventDate).toLocaleDateString("en-US", { month: "short" })}</div>
+                      <div className="text-2xl font-black text-gray-900 py-3">{new Date(event.eventDate).getDate()}</div>
+                    </div>
+                    
+                    <div className="absolute bottom-6 left-6 right-6">
+                      <span className="inline-block px-3 py-1 mb-3 bg-blue-500/20 text-blue-100 backdrop-blur-sm rounded-full text-[10px] font-bold uppercase tracking-widest border border-blue-400/30">
+                        {event.category}
+                      </span>
+                      <h2 className="text-white text-2xl font-bold line-clamp-1">{event.title}</h2>
+                    </div>
+                  </div>
+
+                  <div className="p-6 flex flex-col flex-1">
+                    <p className="text-gray-500 text-sm line-clamp-2 mb-6 flex-1">{event.shortDescription || event.fullDescription}</p>
+                    
+                    <div className="space-y-3 mb-6 bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                      <div className="flex items-center gap-3 text-sm text-gray-700 font-medium">
+                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm text-gray-400"><FaMapMarkerAlt /></div>
+                        <span className="truncate">{event.location}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-sm text-gray-700 font-medium">
+                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm text-gray-400"><FaClock /></div>
+                        <span>{event.eventTime}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 pt-4 border-t border-gray-100">
+                      {hasManage ? (
+                        <>
+                          <button onClick={() => togglePublish(event._id)} className={`flex-[1.5] py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors text-sm ${event.isPublished ? 'bg-[#10B981] hover:bg-[#059669] text-white shadow-sm' : 'bg-gray-500 hover:bg-gray-600 text-white shadow-sm'}`}>
+                            {event.isPublished ? 'Live on User Side' : 'Draft (Hidden)'}
+                          </button>
+                          <button onClick={() => openModal(event)} className="flex-1 py-3 bg-[#2E90FA] hover:bg-[#1570EF] text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors text-sm shadow-sm"><FaEdit /> Edit</button>
+                          <button onClick={() => deleteEvent(event._id)} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors text-sm shadow-sm"><FaTrash /> Del</button>
+                        </>
+                      ) : (
+                        <div className="w-full text-center text-xs text-gray-400 py-2">Action buttons disabled</div>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-20 bg-white border border-dashed border-gray-200 rounded-3xl"><h2 className="text-2xl font-bold text-gray-400 mb-2">No Events Found</h2><p className="text-gray-500">Create your first spiritual event.</p></div>
+          )}
+        </>
+      )}
+
+      {activeTab === 'live' && (
+        <div className="bg-white rounded-2xl p-8 border border-red-100 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-red-50 rounded-full blur-3xl -z-10 -translate-y-1/2 translate-x-1/2"></div>
+          <h2 className="text-2xl font-bold text-deepblue-900 mb-6 flex items-center gap-3">
+            <span className="relative flex h-4 w-4">
+              {liveStream?.isLive && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>}
+              <span className={`relative inline-flex rounded-full h-4 w-4 ${liveStream?.isLive ? 'bg-red-500' : 'bg-gray-400'}`}></span>
+            </span>
+            Live Aarati Control Panel
+          </h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <form onSubmit={(e) => handleLiveSubmit(e, true)} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Live Stream Title</label>
+                <input type="text" required value={liveFormData.title || liveStream?.title || ''} onChange={(e) => setLiveFormData({...liveFormData, title: e.target.value})} disabled={!hasManage} className="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-red-500 disabled:bg-gray-50" placeholder="e.g. Evening Kakad Aarati" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">YouTube Live URL / ID</label>
+                <input type="text" required value={liveFormData.streamUrl || liveStream?.streamUrl || ''} onChange={(e) => setLiveFormData({...liveFormData, streamUrl: e.target.value})} disabled={!hasManage} className="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-red-500 disabled:bg-gray-50" placeholder="https://youtube.com/..." />
+              </div>
+              <div className="flex gap-4">
+                {hasManage && (
+                  <>
+                    <button type="submit" className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl transition-colors shadow-lg shadow-red-500/30 text-lg flex items-center justify-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse"></span> START LIVE STREAM
+                    </button>
+                    {liveStream && liveStream.isLive && (
+                      <button type="button" onClick={handleStopLive} className="flex-1 bg-blue-900 hover:bg-blue-800 text-white font-bold py-3 rounded-xl transition-colors shadow-lg flex items-center justify-center gap-2">
+                        Stop Streaming
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </form>
+            
+            <div className="bg-gray-100 rounded-xl border border-gray-200 flex flex-col items-center justify-center p-6 text-center">
+              {liveStream?.isLive ? (
+                <>
+                  <div className="text-red-500 text-6xl mb-4 animate-pulse"><FaBullhorn /></div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Aarati is currently LIVE!</h3>
+                  <p className="text-gray-500 text-sm">Devotees can see the live feed on the home page.</p>
+                </>
+              ) : (
+                <>
+                  <div className="text-gray-400 text-6xl mb-4"><FaCalendarAlt /></div>
+                  <h3 className="text-xl font-bold text-gray-500 mb-2">No active live stream.</h3>
+                  <p className="text-gray-400 text-sm">Start a live stream to notify devotees.</p>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'past' && (
+        <div className="space-y-8">
+          <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+            <h2 className="text-xl font-bold text-deepblue-900 mb-4">Add Past Video</h2>
+            <form onSubmit={(e) => handleLiveSubmit(e, false)} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+              <div className="col-span-1">
+                <label className="block text-sm font-bold text-gray-700 mb-1">Title</label>
+                <input type="text" required value={liveFormData.title} onChange={(e) => setLiveFormData({...liveFormData, title: e.target.value})} className="w-full bg-white border border-gray-300 rounded-lg px-4 py-2 outline-none focus:border-deepblue-500" />
+              </div>
+              <div className="col-span-1">
+                <label className="block text-sm font-bold text-gray-700 mb-1">Video File (Upload)</label>
+                <input type="file" accept="video/*" onChange={(e) => setLiveVideoFile(e.target.files[0])} className="w-full bg-white border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-deepblue-500 text-sm" />
+              </div>
+              <div className="col-span-1">
+                <label className="block text-sm font-bold text-gray-700 mb-1">OR Video URL</label>
+                <input type="text" value={liveFormData.streamUrl} onChange={(e) => setLiveFormData({...liveFormData, streamUrl: e.target.value})} placeholder="https://..." className="w-full bg-white border border-gray-300 rounded-lg px-4 py-2 outline-none focus:border-deepblue-500" />
+              </div>
+              <div className="col-span-1">
+                <label className="block text-sm font-bold text-gray-700 mb-1">Date</label>
+                <input type="date" required value={liveFormData.scheduledAt} onChange={(e) => setLiveFormData({...liveFormData, scheduledAt: e.target.value})} className="w-full bg-white border border-gray-300 rounded-lg px-4 py-2 outline-none focus:border-deepblue-500" />
+              </div>
+              <div className="col-span-1">
+                <button type="submit" disabled={!liveVideoFile && !liveFormData.streamUrl} className="w-full bg-blue-900 hover:bg-blue-800 disabled:bg-gray-400 text-white font-bold py-2.5 rounded-xl transition-colors shadow-md shadow-gray-900/10">Add Video</button>
+              </div>
+            </form>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {pastVideos.map(video => (
+              <div key={video._id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                <div className="aspect-video bg-gray-900 flex items-center justify-center">
+                  {video.videoFile ? (
+                    <video src={getImageUrl(video.videoFile)} className="w-full h-full object-contain" controls preload="none" />
+                  ) : video.streamUrl ? (
+                    <iframe src={video.streamUrl.replace("watch?v=", "embed/")} className="w-full h-full" allowFullScreen></iframe>
+                  ) : (
+                    <span className="text-gray-500 text-sm">No video</span>
+                  )}
+                </div>
+                <div className="p-4 flex justify-between items-center">
+                  <div>
+                    <h4 className="font-bold text-gray-900 line-clamp-1">{video.title}</h4>
+                    <p className="text-xs text-gray-500">{new Date(video.scheduledAt).toLocaleDateString()}</p>
+                  </div>
+                  {hasManage && (
+                    <button onClick={() => handleDeleteLive(video._id)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg"><FaTrash /></button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {pastVideos.length === 0 && <p className="text-gray-500 col-span-3 text-center py-10">No past videos found.</p>}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL */}
+      <AnimatePresence>
+        {showModal && (
+          <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+              <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">{editingEvent ? "Update Event" : "Create Event"}</h2>
+                  <p className="text-sm text-gray-500">Manage temple spiritual events.</p>
+                </div>
+                <button onClick={closeModal} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 hover:bg-red-500 hover:text-white transition-colors">✕</button>
+              </div>
+
+              <div className="p-6 overflow-y-auto">
+                <form id="event-form" onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Event Title</label>
+                    <input type="text" name="title" required value={formData.title} onChange={handleInputChange} className="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-saffron-500 focus:ring-1 focus:ring-saffron-500" />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Category</label>
+                    <select name="category" required value={formData.category} onChange={handleInputChange} className="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-saffron-500 focus:ring-1 focus:ring-saffron-500">
+                      {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Branch *</label>
+                    <select name="branch" required value={formData.branch} onChange={handleInputChange} className="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-saffron-500 focus:ring-1 focus:ring-saffron-500">
+                      <option value="">Select Branch</option>
+                      {branches.map(b => (
+                        <option key={b._id} value={b._id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Location</label>
+                    <input type="text" name="location" required value={formData.location} onChange={handleInputChange} className="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-saffron-500 focus:ring-1 focus:ring-saffron-500" />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Event Date</label>
+                    <input type="date" name="eventDate" required value={formData.eventDate} onChange={handleInputChange} className="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-saffron-500 focus:ring-1 focus:ring-saffron-500" />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Event Time</label>
+                    <input type="time" name="eventTime" required value={formData.eventTime} onChange={handleInputChange} className="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-saffron-500 focus:ring-1 focus:ring-saffron-500" />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Status</label>
+                    <select name="status" required value={formData.status} onChange={handleInputChange} className="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-saffron-500 focus:ring-1 focus:ring-saffron-500">
+                      <option value="upcoming">Upcoming</option>
+                      <option value="ongoing">Ongoing</option>
+                      <option value="completed">Completed</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                    <input type="checkbox" id="isPublished" checked={formData.isPublished} onChange={(e) => setFormData({...formData, isPublished: e.target.checked})} className="w-5 h-5 text-saffron-500 rounded focus:ring-saffron-500 border-gray-300" />
+                    <div>
+                      <label htmlFor="isPublished" className="block text-sm font-bold text-gray-900 cursor-pointer">Publish to User Side</label>
+                      <p className="text-xs text-gray-500">If checked, this event will immediately be visible to the public.</p>
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2 border-t border-gray-100 pt-5">
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Upload Featured Image</label>
+                    <input type="file" accept="image/*" onChange={handleFileChange} className="w-full border border-gray-300 rounded-xl px-4 py-2 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-[#f27415] hover:file:bg-orange-100 outline-none" />
+                    <p className="text-xs text-gray-400 mt-2">Select a high-quality image from your device.</p>
+                  </div>
+
+                  <div className="md:col-span-2 border-t border-gray-100 pt-5">
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Upload Historical/Past Video (Optional)</label>
+                    <input type="file" accept="video/mp4,video/webm,video/ogg" onChange={handleVideoChange} className="w-full border border-gray-300 rounded-xl px-4 py-2 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100 outline-none" />
+                    <p className="text-xs text-gray-400 mt-2">Upload past event recordings to display in Historical Archives (Max 100MB).</p>
+                    {editingEvent?.videoFile && <p className="text-xs text-green-600 mt-1">Video currently uploaded: Yes</p>}
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Description</label>
+                    <textarea name="description" rows="4" required value={formData.description} onChange={handleInputChange} className="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-saffron-500 focus:ring-1 focus:ring-saffron-500"></textarea>
+                  </div>
+                </form>
+              </div>
+              
+              <div className="p-8 border-t border-gray-100 bg-gray-50 flex justify-end gap-4 rounded-b-3xl">
+                <button type="button" onClick={closeModal} className="px-6 py-3 bg-white border border-gray-200 rounded-xl font-bold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">Cancel</button>
+                <button type="submit" form="event-form" disabled={formLoading} className="px-8 py-3 bg-blue-900 hover:bg-blue-800 text-white rounded-xl font-bold shadow-[0_4px_14px_0_rgba(255,122,47,0.39)] transition-colors flex items-center gap-2">
+                  {formLoading ? <FaSpinner className="animate-spin" /> : <FaPlus />} {editingEvent ? "Save Changes" : "Create Event"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export default AdminEvents;

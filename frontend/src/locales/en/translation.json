@@ -1,0 +1,60 @@
+{
+  "navbar": {
+    "home": "Home",
+    "about": "About",
+    "services": "Services",
+    "events": "Events",
+    "donations": "Donations",
+    "contact": "Contact",
+    "login": "Login",
+    "register": "Register",
+    "logout": "Logout"
+  },
+  "hero": {
+    "badge": "Divine Journey",
+    "slides": {
+      "1": {
+        "title": "Welcome to Divine Temple",
+        "desc": "Experience the profound peace and spiritual connection in our sacred space.",
+        "btn": "Book Donation"
+      },
+      "2": {
+        "title": "Manage Donations & Events Easily",
+        "desc": "Securely contribute to the temple's welfare and stay updated on all activities.",
+        "btn": "Donate Now"
+      },
+      "3": {
+        "title": "Join Spiritual Activities",
+        "desc": "Participate in meditation, chanting, and learning sessions to elevate your soul.",
+        "btn": "Explore Services"
+      },
+      "4": {
+        "title": "Temple Festivals & Celebrations",
+        "desc": "Be part of grand celebrations and experience the vibrant culture of our festivals.",
+        "btn": "View Events"
+      },
+      "5": {
+        "title": "Online Donation System",
+        "desc": "Offer your support digitally with our secure and easy-to-use donation platform.",
+        "btn": "Support Us"
+      }
+    }
+  },
+  "home": {
+    "offerings": "Our Offerings",
+    "offerings_title": "Digital Temple Services",
+    "offerings_desc": "We bring traditional devotional practices to the modern world, making your spiritual journey accessible and serene.",
+    "analytics_title": "Our Growing Spiritual Family",
+    "analytics_desc": "See the impact of our digital initiative across the globe.",
+    "locations": "Our Locations",
+    "locations_title": "Temple Branches",
+    "view_all_locations": "View All Locations",
+    "explore_branch": "Explore Branch",
+    "upcoming_events": "Upcoming Events",
+    "upcoming_events_desc": "Join us in celebrating major festivals and spiritual gatherings.",
+    "register_now": "Register Now",
+    "devotee_experiences": "Devotee Experiences",
+    "testimonials_title": "What People Say",
+    "join_community": "Join Our Community"
+  }
+}

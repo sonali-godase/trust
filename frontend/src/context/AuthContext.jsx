@@ -1,29 +1,54 @@
-import React,{createContext,useState} from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
+import api from "../utils/api";
+
 
 export const AuthContext = createContext();
 
-export const AuthProvider = ({children})=>{
+export const useAuth = () => useContext(AuthContext);
 
-const [user,setUser] = useState(null);
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-const login = (data)=>{
-localStorage.setItem("token",data);
-setUser(data);
-}
+  useEffect(() => {
+    const initAuth = async () => {
+      const token = sessionStorage.getItem("token");
+      if (token) {
+        try {
+          api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+          const res = await api.get("/auth/me");
+          setUser(res.data.user);
+        } catch (error) {
+          console.error("Token verification failed:", error);
+          sessionStorage.removeItem("token");
+          delete api.defaults.headers.common["Authorization"];
+        }
+      }
+      setLoading(false);
+    };
 
-const logout = ()=>{
-localStorage.removeItem("token");
-setUser(null);
-}
+    initAuth();
+  }, []);
 
-return(
+  const login = (token, userData) => {
+    sessionStorage.setItem("token", token);
+    api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+    setUser(userData);
+  };
 
-<AuthContext.Provider value={{user,login,logout}}>
+  const logout = async () => {
 
-{children}
+    sessionStorage.clear();
+    localStorage.removeItem("token");
+    localStorage.removeItem("documentAdminToken");
+    localStorage.removeItem("documentAdminBranch");
+    delete api.defaults.headers.common["Authorization"];
+    setUser(null);
+  };
 
-</AuthContext.Provider>
-
-)
-
-}
+  return (
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
