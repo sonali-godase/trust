@@ -48,7 +48,7 @@ const Announcements = () => {
     subject: '',
     message: '',
     priority: 'Normal',
-    audienceType: ['All Users'],
+    audienceType: [],
     targetBranches: [],
     targetRoles: [],
     targetUsers: [],
@@ -118,6 +118,8 @@ const Announcements = () => {
         setTimeout(() => setNewAddedId(null), 5000); 
       }
       
+      alert('Announcement dispatched successfully!');
+      
     } catch (err) {
       alert(`Failed to save announcement. Server said: ${err.response?.data?.message || err.message}`);
     } finally {
@@ -127,7 +129,7 @@ const Announcements = () => {
 
   const resetForm = () => {
     setFormData({
-      title: '', subject: '', message: '', priority: 'Normal', audienceType: ['All Users'],
+      title: '', subject: '', message: '', priority: 'Normal', audienceType: [],
       targetBranches: [], targetRoles: [], targetUsers: [], displayLocations: ['Website Home Page'], status: 'Published',
       publishDate: new Date().toISOString().split('T')[0], expiryDate: '',
       whatsappIntegration: false, smsIntegration: false, emailIntegration: false, dashboardNotification: true,
@@ -141,7 +143,7 @@ const Announcements = () => {
       subject: ann.subject || '',
       message: ann.message || '',
       priority: ann.priority || 'Normal',
-      audienceType: ann.audienceType || ['All Users'],
+      audienceType: ann.audienceType || [],
       targetBranches: ann.targetBranches || [],
       targetRoles: ann.targetRoles || [],
       targetUsers: ann.targetUsers || [],

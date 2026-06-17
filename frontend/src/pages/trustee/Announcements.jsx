@@ -53,7 +53,7 @@ const Announcements = () => {
     subject: '',
     message: '',
     priority: 'Normal',
-    audienceType: ['All Users'],
+    audienceType: [],
     targetBranches: [],
     targetRoles: [],
     targetUsers: [],
@@ -194,6 +194,8 @@ const Announcements = () => {
         setNewAddedId(res.data.data._id);
         setTimeout(() => setNewAddedId(null), 5000); 
       }
+      
+      alert('Announcement dispatched successfully!');
       
     } catch (err) {
       alert(`Failed to save announcement. Server said: ${err.response?.data?.message || err.message}`);
@@ -639,7 +641,7 @@ const Announcements = () => {
                             </div>
                           </div>
                           <div className="max-h-40 overflow-y-auto custom-scrollbar p-2 grid grid-cols-1 md:grid-cols-2 gap-1 bg-white">
-                            {admins.filter(a => (a.name || a.email || '').toLowerCase().includes(searchAdmins.toLowerCase())).map(a => (
+                            {admins.filter(a => a._id !== user?._id && (a.name || a.email || '').toLowerCase().includes(searchAdmins.toLowerCase())).map(a => (
                               <label key={a._id} className={`flex items-center gap-2 cursor-pointer text-xs hover:bg-slate-50 p-1.5 rounded ${audienceSettings.specificAdmins.includes(a._id) ? 'bg-indigo-50/50' : ''}`}>
                                 <input type="checkbox" checked={audienceSettings.specificAdmins.includes(a._id)} onChange={() => handleAudienceToggle('specificAdmins', true, a._id)} className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5" />
                                 <span className="text-slate-700 truncate">{a.name || a.email} <span className="text-slate-400">({a.role || 'Admin'})</span></span>
@@ -685,7 +687,7 @@ const Announcements = () => {
                             </div>
                           </div>
                           <div className="max-h-40 overflow-y-auto custom-scrollbar p-2 grid grid-cols-1 md:grid-cols-2 gap-1 bg-white">
-                            {branchManagers.filter(b => (b.name || b.email || '').toLowerCase().includes(searchBm.toLowerCase())).map(b => (
+                            {branchManagers.filter(b => b._id !== user?._id && (b.name || b.email || '').toLowerCase().includes(searchBm.toLowerCase())).map(b => (
                               <label key={b._id} className={`flex items-center gap-2 cursor-pointer text-xs hover:bg-slate-50 p-1.5 rounded ${audienceSettings.specificBranchManagers.includes(b._id) ? 'bg-indigo-50/50' : ''}`}>
                                 <input type="checkbox" checked={audienceSettings.specificBranchManagers.includes(b._id)} onChange={() => handleAudienceToggle('specificBranchManagers', true, b._id)} className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5" />
                                 <span className="text-slate-700 truncate">{b.name || b.email}</span>
@@ -708,7 +710,7 @@ const Announcements = () => {
                             </div>
                           </div>
                           <div className="max-h-40 overflow-y-auto custom-scrollbar p-2 grid grid-cols-1 md:grid-cols-2 gap-1 bg-white">
-                            {accountants.filter(a => (a.fullName || a.name || a.email || '').toLowerCase().includes(searchAcc.toLowerCase())).map(a => (
+                            {accountants.filter(a => a._id !== user?._id && (a.fullName || a.name || a.email || '').toLowerCase().includes(searchAcc.toLowerCase())).map(a => (
                               <label key={a._id} className={`flex items-center gap-2 cursor-pointer text-xs hover:bg-slate-50 p-1.5 rounded ${audienceSettings.specificAccountants.includes(a._id) ? 'bg-indigo-50/50' : ''}`}>
                                 <input type="checkbox" checked={audienceSettings.specificAccountants.includes(a._id)} onChange={() => handleAudienceToggle('specificAccountants', true, a._id)} className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5" />
                                 <span className="text-slate-700 truncate">{a.fullName || a.name || a.email} <span className="text-slate-400">({a.role || 'Accountant'})</span></span>
@@ -731,7 +733,7 @@ const Announcements = () => {
                             </div>
                           </div>
                           <div className="max-h-40 overflow-y-auto custom-scrollbar p-2 grid grid-cols-1 md:grid-cols-2 gap-1 bg-white">
-                            {documentHandlers.filter(d => (d.email || '').toLowerCase().includes(searchDh.toLowerCase())).map(d => (
+                            {documentHandlers.filter(d => d._id !== user?._id && (d.email || '').toLowerCase().includes(searchDh.toLowerCase())).map(d => (
                               <label key={d._id} className={`flex items-center gap-2 cursor-pointer text-xs hover:bg-slate-50 p-1.5 rounded ${audienceSettings.specificDocHandlers.includes(d._id) ? 'bg-indigo-50/50' : ''}`}>
                                 <input type="checkbox" checked={audienceSettings.specificDocHandlers.includes(d._id)} onChange={() => handleAudienceToggle('specificDocHandlers', true, d._id)} className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5" />
                                 <span className="text-slate-700 truncate">{d.email} <span className="text-slate-400">({d.role === 'document_admin' ? 'Document Handler' : (d.role || 'Document Handler')})</span></span>
